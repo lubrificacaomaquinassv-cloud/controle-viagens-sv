@@ -1,594 +1,305 @@
 # -*- coding: utf-8 -*-
-"""CONTROLE DE VIAGENS — Veículos Linha Leve e Pesada | SIGCF Santa Vergínia"""
+"""
+SIG Frota de Veículos — APP DE LANÇAMENTO (campo)
+Publicar como app.py no repo: sig-frota-lancamento-sv
+"""
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import folium
-from streamlit_folium import st_folium
-from datetime import datetime, timedelta, date
-from pathlib import Path
+from datetime import date, datetime
 from supabase import create_client
 
-PAINEL_BUILD = "2026-07-18-v1"
-LOGO_URL = "https://i.postimg.cc/Y9X7ddnb/LOGO-BP.jpg"
-DIR = Path(__file__).resolve().parent
-MAPA_FAZENDA = DIR / "assets" / "mapa_fazenda.png"
+from geografia import buscar_cidades
+from sigcf_auth import exigir_acesso, logo_html
 
-# Centro aproximado Bataguassu-MS (ajuste conforme GPS da fazenda)
-FAZENDA_CENTER = (-21.7167, -52.4217)
-
-MOTIVOS_PADRAO = [
-    "Buscar material",
-    "Levar colaborador",
-    "Buscar peças / insumos",
-    "Serviço em fornecedor",
-    "Visita técnica",
-    "Entrega / retirada documentos",
-    "Emergência / plantão",
-    "Outro (descrever abaixo)",
-]
-
-CIDADES_COMUNS = [
-    "Bataguassu — MS",
-    "Bataguassu — Centro",
-    "Anastácio — MS",
-    "Aquidauana — MS",
-    "Campo Grande — MS",
-    "Dourados — MS",
-    "Nova Andradina — MS",
-    "Três Lagoas — MS",
-    "Outra (informar abaixo)",
-]
-
-CATS_VEICULO = frozenset({"VEICULO_LEVE", "VEICULO_PESADO", "CAMINHAO", "MOTO"})
+BUILD = "2026-07-18-lancamento-v2"
 
 st.set_page_config(
-    page_title="Controle de Viagens — SV",
+    page_title="SIG Frota de Veículos — Lançamento",
+    page_icon="🚘",
     layout="wide",
-    page_icon="🚗",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
+
+exigir_acesso("SIG Frota de Veículos", "Lançamento de viagens — SIGCF Santa Virgínia")
 
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&display=swap');
 [data-testid="stAppViewContainer"]{background:#0a1409;}
-[data-testid="stSidebar"]{background:#111c10;border-right:1px solid #1e2e1c;}
 [data-testid="stHeader"]{background:#0a1409;}
-h1,h2,h3,h4,p,span,label{color:#e8edd0;}
+h1,h2,h3,p,span,label{color:#e8edd0;}
+h1{font-family:'Barlow Condensed',sans-serif;letter-spacing:0.5px;}
 .stCaption,[data-testid="stCaptionContainer"] p{color:#8aab80!important;}
-.stMarkdown p,.stMarkdown li{color:#c8d8c0;}
-.stAlert p{color:#e8edd0!important;}
 .sec{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;
-     letter-spacing:2px;text-transform:uppercase;color:#8aab80;
-     border-left:4px solid #4a9e3f;padding-left:10px;margin:18px 0 10px;}
-.stTabs [data-baseweb="tab-list"]{background:#111c10;border-bottom:2px solid #1e2e1c;gap:0;}
-.stTabs [data-baseweb="tab"]{color:#4a6644;font-family:'Barlow Condensed',sans-serif;
-     font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
-     padding:10px 20px;border-bottom:3px solid transparent;}
-.stTabs [aria-selected="true"]{color:#6fcf60!important;border-bottom:3px solid #4a9e3f!important;}
-div[data-testid="metric-container"]{background:#111c10;border:1px solid #1e2e1c;border-radius:10px;padding:14px;}
-div[data-testid="metric-container"] label{color:#8aab80!important;font-size:11px!important;}
-div[data-testid="metric-container"] [data-testid="stMetricValue"]{color:#e8edd0!important;}
-div[data-testid="stForm"]{background:#111c10;border:1px solid #1e2e1c;border-radius:12px;padding:20px;}
-div[data-testid="stSelectbox"] label,div[data-testid="stNumberInput"] label,
-div[data-testid="stDateInput"] label,div[data-testid="stTimeInput"] label,
-div[data-testid="stTextArea"] label,div[data-testid="stTextInput"] label,
-div[data-testid="stRadio"] label,div[data-testid="stMultiSelect"] label{
- color:#8aab80!important;font-family:'Barlow Condensed',sans-serif;
- text-transform:uppercase;letter-spacing:1px;font-size:11px!important;}
-div[data-testid="stRadio"] div[role="radiogroup"] p{color:#e8edd0!important;text-transform:none;}
-div[data-baseweb="select"] > div{background:#0d180c!important;border:1px solid #1e2e1c!important;color:#e8edd0!important;}
-.stNumberInput input,.stTextInput input,.stTextArea textarea,.stTimeInput input{
- background:#0d180c!important;border:1px solid #1e2e1c!important;color:#e8edd0!important;}
+ letter-spacing:2px;text-transform:uppercase;color:#8aab80;
+ border-left:4px solid #4a9e3f;padding-left:10px;margin:8px 0 12px;}
+.logo-frame{background:linear-gradient(145deg,#0a1628,#0d2040);border:2px solid #c9a227;
+ border-radius:12px;padding:5px;display:inline-block;box-shadow:0 4px 18px rgba(0,0,0,.45);}
+.logo-frame img{display:block;border-radius:8px;}
+.titulo-frota{font-family:'Barlow Condensed',sans-serif;font-size:2rem;font-weight:700;
+ color:#e8edd0;display:flex;align-items:center;gap:10px;}
+.titulo-frota .ico{font-size:2.2rem;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));}
+.stTextInput input,.stNumberInput input,.stTextArea textarea,[data-testid="stDateInput"] input,
+[data-testid="stTimeInput"] input{
+ background:#dce6d2!important;color:#1a2818!important;border:1px solid #4a6644!important;border-radius:8px!important;}
+div[data-baseweb="select"] > div{background:#dce6d2!important;border:1px solid #4a6644!important;color:#1a2818!important;border-radius:8px!important;}
+div[data-baseweb="select"] div{color:#1a2818!important;}
+[data-testid="stForm"]{background:#0d180c!important;border:1px solid #1e2e1c!important;border-radius:12px;padding:16px;}
 .stButton button,[data-testid="stFormSubmitButton"] button{
- background:#4a9e3f!important;color:#ffffff!important;border:1px solid #6fcf60!important;
- font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;
- text-transform:uppercase;border-radius:8px;}
-.stButton button:hover,[data-testid="stFormSubmitButton"] button:hover{background:#3d8534!important;}
-.logo-box{background:#ffffff;border-radius:10px;padding:8px 12px;display:inline-block;}
-.badge-leve{background:#1a3a5c;color:#7ec8ff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;}
-.badge-pesada{background:#3a2a10;color:#ffc857;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;}
+ background:#4a9e3f!important;color:#fff!important;border:1px solid #6fcf60!important;
+ font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;border-radius:8px;}
 </style>
 """, unsafe_allow_html=True)
 
-PDARK = dict(
-    paper_bgcolor="#111c10", plot_bgcolor="#0d180c",
-    font=dict(color="#e8edd0", family="Barlow Condensed"),
-    margin=dict(l=10, r=10, t=40, b=10),
-)
+MOTIVOS = [
+    "Buscar material",
+    "Levar colaborador",
+    "Buscar peças / insumos",
+    "Serviço em fornecedor",
+    "Visita técnica",
+    "Emergência / plantão",
+    "Outro",
+]
 
-
-def exigir_pin():
-    pin_cfg = str(st.secrets.get("APP_PIN", "") or "").strip()
-    if not pin_cfg:
-        return True
-    if st.session_state.get("viagem_auth_ok"):
-        return True
-    st.markdown("### 🔐 Acesso ao painel")
-    pin = st.text_input("PIN", type="password")
-    if st.button("Entrar"):
-        if pin == pin_cfg:
-            st.session_state["viagem_auth_ok"] = True
-            st.rerun()
-        else:
-            st.error("PIN incorreto.")
-    return False
-
-
-@st.cache_resource
-def get_supabase():
-    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-
-
-def sb():
-    return get_supabase()
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 @st.cache_data(ttl=120)
-def carregar_frota_veiculos():
-    sup = sb()
-    frota = sup.table("dim_frota").select("id_frota, modelo, categoria").eq("ativo", True).execute()
-    painel = sup.table("dim_frota_painel").select("id_frota, modelo, categoria_painel").execute()
-    df_f = pd.DataFrame(frota.data or [])
-    df_p = pd.DataFrame(painel.data or [])
-    cat_map = {}
-    if not df_p.empty:
-        for _, r in df_p.iterrows():
-            cat_map[str(r["id_frota"]).strip()] = {
-                "categoria": str(r.get("categoria_painel") or "").upper(),
-                "modelo": r.get("modelo") or "",
-            }
-    veiculos = []
-    for _, r in df_f.iterrows():
-        fid = str(r["id_frota"]).strip()
-        meta = cat_map.get(fid, {})
-        cat = meta.get("categoria") or str(r.get("categoria") or "").upper()
-        modelo = meta.get("modelo") or r.get("modelo") or ""
-        if cat not in CATS_VEICULO:
-            mod_u = str(modelo).upper()
-            if any(x in mod_u for x in ("KWID", "TORO", "SAVEIRO", "STRADA", "HILUX", "RANGER", "S10")):
-                cat = "VEICULO_LEVE"
-            elif any(x in mod_u for x in ("MB", "2638", "SCANIA", "VOLVO", "CAMINH")):
-                cat = "VEICULO_PESADO"
-            elif any(x in mod_u for x in ("XRE", "CRF", "MOTO")):
-                cat = "MOTO"
-            else:
-                continue
-        linha = "LEVE" if cat in ("VEICULO_LEVE", "MOTO") else "PESADA"
-        veiculos.append({
-            "id_frota": fid,
-            "modelo": modelo,
-            "categoria": cat,
-            "linha": linha,
-            "label": f"{modelo} · {fid} [{linha}]" if modelo else f"{fid} [{linha}]",
-        })
-    veiculos.sort(key=lambda x: (x["linha"], x["label"]))
-    return veiculos
+def carregar_veiculos():
+    res = (
+        supabase.table("dim_veiculos")
+        .select("placa, descricao, linha")
+        .eq("ativo", True)
+        .order("linha")
+        .order("placa")
+        .execute()
+    )
+    return res.data or []
 
 
 @st.cache_data(ttl=300)
-def carregar_retiros():
-    try:
-        res = sb().table("dim_retiro_fazenda").select("nome, lat, lng").eq("ativo", True).order("nome").execute()
-        return res.data or []
-    except Exception:
-        return [
-            {"nome": "SEDE / ESCRITÓRIO", "lat": -21.7167, "lng": -52.4217},
-            {"nome": "OFICINA", "lat": -21.7175, "lng": -52.4225},
-            {"nome": "DEPÓSITO / ALMOXARIFADO", "lat": -21.7180, "lng": -52.4210},
-        ]
+def carregar_locais_internos():
+    res = (
+        supabase.table("dim_locais")
+        .select("nome")
+        .eq("ativo", True)
+        .eq("tipo", "INTERNO")
+        .order("nome")
+        .execute()
+    )
+    return [r["nome"] for r in (res.data or [])]
 
 
-@st.cache_data(ttl=30)
-def carregar_viagens(dias=90):
-    try:
+@st.cache_data(ttl=300)
+def carregar_cidades_cadastradas():
+    res = (
+        supabase.table("dim_locais")
+        .select("nome, lat, lng, cidade")
+        .eq("ativo", True)
+        .eq("tipo", "EXTERNO")
+        .order("nome")
+        .execute()
+    )
+    return res.data or []
+
+
+@st.cache_data(ttl=15)
+def ultimas_viagens(limit=10):
         res = (
-            sb()
-            .table("vw_viagem_veiculo_painel")
-            .select("*")
-            .gte("data_hora", (datetime.now() - timedelta(days=dias)).isoformat())
-            .order("data_hora", desc=True)
-            .limit(2000)
-            .execute()
-        )
-        return pd.DataFrame(res.data or [])
-    except Exception:
-        res = (
-            sb()
-            .table("viagem_veiculo")
-            .select("*")
-            .gte("data_hora", (datetime.now() - timedelta(days=dias)).isoformat())
-            .order("data_hora", desc=True)
-            .limit(2000)
-            .execute()
-        )
-        return pd.DataFrame(res.data or [])
+            supabase.table("viagem_veiculo")
+            .select("data_hora, id_frota, tipo_viagem, km_percorrido, motivo, destino_cidade, retiros")
+        .order("data_hora", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return res.data or []
 
 
-def parse_dt(series):
-    raw = series.astype(str).str.strip()
-    has_tz = raw.str.contains(r"[+-]\d{2}:\d{2}|Z$", regex=True, na=False)
-    dt = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
-    if has_tz.any():
-        dt.loc[has_tz] = (
-            pd.to_datetime(raw[has_tz], errors="coerce", utc=True)
-            .dt.tz_convert("America/Sao_Paulo")
-            .dt.tz_localize(None)
-        )
-    if (~has_tz).any():
-        dt.loc[~has_tz] = pd.to_datetime(raw[~has_tz], errors="coerce")
-    return dt
+def dark_table(df, height=220):
+    if df.empty:
+        st.info("Nenhum registro.")
+        return
+    rows = "".join(
+        "<tr>" + "".join(
+            f'<td style="padding:6px 10px;border-bottom:1px solid #1e2e1c;color:#e8edd0;font-size:12px;">{v}</td>'
+            for v in row) + "</tr>"
+        for _, row in df.iterrows())
+    headers = "".join(
+        f'<th style="padding:7px 10px;background:#111c10;color:#8aab80;font-size:10px;font-weight:700;'
+        f'text-transform:uppercase;border-bottom:2px solid #1e2e1c;">{c}</th>'
+        for c in df.columns)
+    st.markdown(
+        f'<div style="overflow:auto;max-height:{height}px;border:1px solid #1e2e1c;border-radius:10px;">'
+        f'<table style="width:100%;border-collapse:collapse;background:#0d180c;">'
+        f'<thead><tr>{headers}</tr></thead><tbody>{rows}</tbody></table></div>',
+        unsafe_allow_html=True,
+    )
 
 
-def mapa_externo(df_ext, height=420):
-    m = folium.Map(location=list(FAZENDA_CENTER), zoom_start=6, tiles="OpenStreetMap")
-    folium.Marker(
-        list(FAZENDA_CENTER),
-        popup="Base — Santa Vergínia",
-        icon=folium.Icon(color="green", icon="home", prefix="fa"),
-    ).add_to(m)
-    if df_ext.empty:
-        return m
-    for _, row in df_ext.iterrows():
-        lat, lng = row.get("destino_lat"), row.get("destino_lng")
-        if pd.isna(lat) or pd.isna(lng):
-            continue
-        folium.Marker(
-            [float(lat), float(lng)],
-            popup=(
-                f"{row.get('destino_cidade', '—')}<br>"
-                f"Frota {row.get('id_frota')} · {row.get('km_percorrido', 0):.0f} km<br>"
-                f"{row.get('motivo', '')}"
-            ),
-            icon=folium.Icon(color="blue", icon="car", prefix="fa"),
-        ).add_to(m)
-        folium.PolyLine(
-            [list(FAZENDA_CENTER), [float(lat), float(lng)]],
-            color="#4a9e3f", weight=2, opacity=0.6, dash_array="5",
-        ).add_to(m)
-    return m
+veiculos = carregar_veiculos()
+locais_int = carregar_locais_internos()
+cidades_db = carregar_cidades_cadastradas()
 
+col_logo, col_titulo = st.columns([1.1, 5.9])
+with col_logo:
+    st.markdown(logo_html(118), unsafe_allow_html=True)
+with col_titulo:
+    st.markdown(
+        '<div class="titulo-frota"><span class="ico">🚘</span> SIG Frota de Veículos</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption("SIGCF — Sistema Integrado de Gestão · Lançamento de viagens · Build " + BUILD)
 
-def mapa_interno(retiros_data, viagens_int, height=420):
-    m = folium.Map(location=list(FAZENDA_CENTER), zoom_start=14, tiles="OpenStreetMap")
-    for r in retiros_data:
-        lat, lng = r.get("lat"), r.get("lng")
-        if lat is None or lng is None:
-            continue
-        folium.CircleMarker(
-            [float(lat), float(lng)],
-            radius=8,
-            popup=r.get("nome", ""),
-            color="#6fcf60",
-            fill=True,
-            fill_color="#4a9e3f",
-            fill_opacity=0.8,
-        ).add_to(m)
-    if not viagens_int.empty:
-        for _, row in viagens_int.iterrows():
-            lat, lng = row.get("retiro_lat"), row.get("retiro_lng")
-            if pd.isna(lat) or pd.isna(lng):
-                continue
-            folium.Marker(
-                [float(lat), float(lng)],
-                popup=f"Frota {row.get('id_frota')} · {row.get('motivo', '')}",
-                icon=folium.Icon(color="orange", icon="info-sign"),
-            ).add_to(m)
-    return m
-
-
-# ── Sidebar ──
-with st.sidebar:
-    st.markdown(f'<div class="logo-box"><img src="{LOGO_URL}" width="90"></div>', unsafe_allow_html=True)
-    st.title("Controle de Viagens")
-    st.caption(f"Build {PAINEL_BUILD}")
-    menu = st.radio("Menu", ["📝 Lançar viagem", "📊 Painel", "🗺️ Mapas"], label_visibility="collapsed")
-    st.divider()
-    dias_filtro = st.slider("Período (dias)", 7, 180, 30)
-    filtro_linha = st.multiselect("Linha", ["LEVE", "PESADA"], default=["LEVE", "PESADA"])
-    st.caption("SIGCF | Santa Vergínia — MS")
-
-if not exigir_pin():
+if not veiculos:
+    st.error("Cadastre veículos em dim_veiculos (rode sql/01_schema_sig_frota.sql no Supabase).")
     st.stop()
 
-veiculos = carregar_frota_veiculos()
-retiros_db = carregar_retiros()
-df_v = carregar_viagens(dias_filtro)
+tipo_viagem = st.radio(
+    "Tipo de viagem",
+    ["INTERNA — Local (fazenda / retiros)", "EXTERNA — Cidade"],
+    horizontal=True,
+)
+eh_interna = tipo_viagem.startswith("INTERNA")
 
-if not df_v.empty and "data_hora" in df_v.columns:
-    df_v["data_hora"] = parse_dt(df_v["data_hora"])
-    df_v = df_v[df_v["linha"].isin(filtro_linha)] if "linha" in df_v.columns else df_v
+destino_lat, destino_lng = None, None
+destino_nome, destino_cidade = None, None
 
-# ═══════════════════════════════════════════════════════════════
-# LANÇAR VIAGEM
-# ═══════════════════════════════════════════════════════════════
-if menu == "📝 Lançar viagem":
-    col_logo, col_t = st.columns([1, 6])
-    with col_logo:
-        st.markdown(f'<div class="logo-box"><img src="{LOGO_URL}" width="80"></div>', unsafe_allow_html=True)
-    with col_t:
-        st.title("🚗 Lançamento de Viagem")
-        st.caption("Veículos linha leve e pesada · viagem interna (fazenda) ou externa (cidade)")
+if not eh_interna:
+    st.markdown('<div class="sec">Destino externo — geografia via OpenStreetMap</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        opcoes_cidade = [c["nome"] for c in cidades_db] + ["🔍 Buscar outra cidade (OpenStreetMap)..."]
+        cidade_sel = st.selectbox("Cidade cadastrada", opcoes_cidade)
+    with c2:
+        busca_osm = st.text_input("Buscar cidade (OSM)", placeholder="Ex: Sidrolândia")
 
-    if not veiculos:
-        st.warning("Nenhum veículo leve/pesado encontrado em dim_frota. Cadastre a frota no Supabase.")
-        st.stop()
-
-    tipo_viagem = st.radio(
-        "Tipo de viagem",
-        ["INTERNA — Local (fazenda)", "EXTERNA — Cidade"],
-        horizontal=True,
-        help="Interna: deslocamento entre retiros/setores. Externa: saída para cidade.",
-    )
-    eh_interna = tipo_viagem.startswith("INTERNA")
-
-    with st.form("form_viagem", clear_on_submit=True):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            data_v = st.date_input("Data", value=date.today())
-        with c2:
-            hora_v = st.time_input("Hora", value=datetime.now().time().replace(second=0, microsecond=0))
-        with c3:
-            motorista = st.text_input("Motorista / condutor", placeholder="Nome do condutor")
-
-        filtro_v = st.multiselect("Filtrar linha", ["LEVE", "PESADA"], default=["LEVE", "PESADA"])
-        opts = [v["label"] for v in veiculos if v["linha"] in filtro_v] or [v["label"] for v in veiculos]
-        veiculo_sel = st.selectbox("Veículo (frota)", options=opts)
-
-        c4, c5 = st.columns(2)
-        with c4:
-            km_ini = st.number_input("KM inicial", min_value=0.0, step=0.1, format="%.1f")
-        with c5:
-            km_fim = st.number_input("KM final", min_value=0.0, step=0.1, format="%.1f")
-
-        motivo_sel = st.selectbox("Motivo", MOTIVOS_PADRAO)
-        motivo_extra = st.text_area(
-            "Descreva o motivo",
-            placeholder="Ex.: buscar rolamento na oficina de Bataguassu, levar mecânico ao retiro sul…",
-            height=70,
-        )
-
-        destino_cidade = None
-        dest_lat, dest_lng = None, None
-        retiros_sel = []
-        ret_lat, ret_lng = None, None
-
-        if eh_interna:
-            st.markdown('<div class="sec">📍 Retiros visitados (viagem interna)</div>', unsafe_allow_html=True)
-            nomes_ret = [r["nome"] for r in retiros_db]
-            retiros_sel = st.multiselect(
-                "Selecione um ou mais retiros / setores",
-                options=nomes_ret,
-                help="Marque todos os pontos visitados na fazenda.",
-            )
-            if MAPA_FAZENDA.exists():
-                st.image(str(MAPA_FAZENDA), caption="Mapa da fazenda — referência visual", use_container_width=True)
-            else:
-                st.info(
-                    "Coloque o mapa da fazenda em `assets/mapa_fazenda.png` para exibir aqui. "
-                    "Coordenadas dos retiros podem ser ajustadas no Supabase (dim_retiro_fazenda)."
-                )
-            if retiros_sel:
-                primeiro = next((r for r in retiros_db if r["nome"] in retiros_sel), None)
-                if primeiro:
-                    ret_lat, ret_lng = primeiro.get("lat"), primeiro.get("lng")
+    if busca_osm.strip():
+        resultados = buscar_cidades(busca_osm.strip())
+        if resultados:
+            labels = [r["label"] for r in resultados]
+            escolha = st.selectbox("Resultado da busca (geografia atualizada)", labels)
+            if escolha:
+                hit = next(r for r in resultados if r["label"] == escolha)
+                destino_nome = hit["display_name"]
+                destino_cidade = hit["label"]
+                destino_lat, destino_lng = hit["lat"], hit["lng"]
+                st.caption(f"📍 {destino_lat:.5f}, {destino_lng:.5f}")
         else:
-            st.markdown('<div class="sec">🌍 Destino (viagem externa)</div>', unsafe_allow_html=True)
-            destino_cidade = st.selectbox("Cidade / destino", CIDADES_COMUNS)
-            destino_livre = st.text_input("Detalhe do destino (rua, fornecedor, bairro)")
-            if destino_cidade == "Outra (informar abaixo)" and destino_livre:
-                destino_cidade = destino_livre
-            elif destino_livre:
-                destino_cidade = f"{destino_cidade} — {destino_livre}"
+            st.warning("Nenhum resultado. Tente outro nome.")
 
-        observacao = st.text_area("Observação adicional", height=60)
-        enviar = st.form_submit_button("✅ REGISTRAR VIAGEM", use_container_width=True)
+    if cidade_sel != "🔍 Buscar outra cidade (OpenStreetMap)..." and not destino_cidade:
+        hit = next((c for c in cidades_db if c["nome"] == cidade_sel), None)
+        if hit:
+            destino_nome = hit["nome"]
+            destino_cidade = hit.get("cidade") or hit["nome"]
+            destino_lat = hit.get("lat")
+            destino_lng = hit.get("lng")
 
-    if not eh_interna:
-        st.markdown('<div class="sec">🗺️ Marque o destino no mapa (viagem externa)</div>', unsafe_allow_html=True)
-        st.caption("Clique no mapa para registrar latitude/longitude do destino (opcional, complementa a cidade).")
-        m_click = folium.Map(location=list(FAZENDA_CENTER), zoom_start=7)
-        folium.Marker(list(FAZENDA_CENTER), popup="Base SV", icon=folium.Icon(color="green", icon="home")).add_to(m_click)
-        if st.session_state.get("dest_coords"):
-            lat0, lng0 = st.session_state.dest_coords
-            folium.Marker([lat0, lng0], popup="Destino marcado", icon=folium.Icon(color="blue", icon="flag")).add_to(m_click)
-        click = st_folium(m_click, height=350, returned_objects=["last_clicked"], key="mapa_destino_ext")
-        if click and click.get("last_clicked"):
-            st.session_state.dest_coords = (
-                click["last_clicked"]["lat"],
-                click["last_clicked"]["lng"],
-            )
-            st.success(
-                f"Destino marcado: {st.session_state.dest_coords[0]:.5f}, "
-                f"{st.session_state.dest_coords[1]:.5f}"
-            )
+st.markdown('<div class="sec">Registrar viagem</div>', unsafe_allow_html=True)
 
-    if enviar:
-        if st.session_state.get("dest_coords") and not eh_interna:
-            dest_lat, dest_lng = st.session_state.dest_coords
-        erros = []
-        if km_fim < km_ini:
-            erros.append("KM final deve ser maior ou igual ao KM inicial.")
-        motivo_final = motivo_extra.strip() if motivo_sel.startswith("Outro") else motivo_sel
-        if motivo_extra.strip() and not motivo_sel.startswith("Outro"):
-            motivo_final = f"{motivo_sel} — {motivo_extra.strip()}"
-        if not motivo_final.strip():
-            erros.append("Informe o motivo da viagem.")
-        if eh_interna and not retiros_sel:
-            erros.append("Selecione ao menos um retiro para viagem interna.")
-        if not eh_interna and not destino_cidade:
-            erros.append("Informe o destino da viagem externa.")
+with st.form("form_viagem", clear_on_submit=True):
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1:
+        data_v = st.date_input("Data", value=date.today())
+    with fc2:
+        hora_v = st.time_input("Hora", value=datetime.now().time().replace(second=0, microsecond=0))
+    with fc3:
+        motorista = st.text_input("Motorista / condutor")
 
-        if erros:
-            for e in erros:
-                st.error(f"❌ {e}")
-        else:
-            veic = next(v for v in veiculos if v["label"] == veiculo_sel)
-            dt_hora = datetime.combine(data_v, hora_v)
-            registro = {
-                "data_hora": dt_hora.isoformat(),
-                "id_frota": veic["id_frota"],
-                "linha": veic["linha"],
-                "km_inicial": float(km_ini),
-                "km_final": float(km_fim),
-                "tipo_viagem": "INTERNA" if eh_interna else "EXTERNA",
-                "motivo": motivo_final.strip().upper(),
-                "motorista": motorista.strip().upper() or None,
-                "destino_cidade": destino_cidade if not eh_interna else None,
-                "destino_lat": float(dest_lat) if dest_lat is not None else None,
-                "destino_lng": float(dest_lng) if dest_lng is not None else None,
-                "retiros": retiros_sel if eh_interna else None,
-                "retiro_lat": float(ret_lat) if ret_lat is not None else None,
-                "retiro_lng": float(ret_lng) if ret_lng is not None else None,
-                "observacao": observacao.strip().upper() or None,
-            }
-            try:
-                sb().table("viagem_veiculo").insert(registro).execute()
-                km_p = km_fim - km_ini
-                st.session_state.pop("dest_coords", None)
-                st.success(
-                    f"✅ Viagem registrada! {veic['id_frota']} · "
-                    f"{'INTERNA' if eh_interna else 'EXTERNA'} · {km_p:.1f} km"
-                )
-                st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"❌ Erro ao salvar: {e}")
-                st.info("Confirme se rodou o SQL `criar_tabela_viagens.sql` no Supabase.")
+    labels_veic = [f"{v['placa']} — {v['descricao']} [{v['linha']}]" for v in veiculos]
+    veic_sel = st.selectbox("Placa (frota rodoviária)", labels_veic)
 
-    st.divider()
-    st.markdown('<div class="sec">🕒 Últimas viagens</div>', unsafe_allow_html=True)
-    if df_v.empty:
-        st.info("Nenhuma viagem no período.")
+    fc4, fc5 = st.columns(2)
+    with fc4:
+        km_ini = st.number_input("KM inicial", min_value=0.0, step=0.1, format="%.1f")
+    with fc5:
+        km_fim = st.number_input("KM final", min_value=0.0, step=0.1, format="%.1f")
+
+    motivo = st.selectbox("Motivo", MOTIVOS)
+    motivo_txt = st.text_area("Detalhe do motivo", height=60, placeholder="Descreva: buscar material, levar colaborador…")
+
+    locais_sel = []
+    if eh_interna:
+        locais_sel = st.multiselect("Retiros / locais visitados", options=locais_int)
+
+    with st.expander("💰 Custos da viagem (opcional — entra no fechamento gerencial)"):
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            litros = st.number_input("Litros abastecidos", min_value=0.0, step=0.01, format="%.2f")
+            valor_abast = st.number_input("Valor abastecimento (R$)", min_value=0.0, step=0.01, format="%.2f")
+            valor_ped = st.number_input("Pedágio (R$)", min_value=0.0, step=0.01, format="%.2f")
+        with cc2:
+            valor_manut = st.number_input("Manutenção (R$)", min_value=0.0, step=0.01, format="%.2f")
+            valor_mot = st.number_input("Valor motorista (R$)", min_value=0.0, step=0.01, format="%.2f")
+
+    obs = st.text_area("Observação", height=50)
+    enviar = st.form_submit_button("✅ REGISTRAR VIAGEM", use_container_width=True, type="primary")
+
+if enviar:
+    placa = veic_sel.split(" — ")[0].strip().upper()
+    motivo_final = motivo_txt.strip().upper() if motivo == "Outro" else motivo.upper()
+    if motivo_txt.strip() and motivo != "Outro":
+        motivo_final = f"{motivo.upper()} — {motivo_txt.strip().upper()}"
+
+    erros = []
+    if km_fim < km_ini:
+        erros.append("KM final deve ser ≥ KM inicial.")
+    if not motivo_final:
+        erros.append("Informe o motivo.")
+    if eh_interna and not locais_sel:
+        erros.append("Selecione ao menos um local interno.")
+    if not eh_interna and not destino_cidade and not destino_nome:
+        erros.append("Selecione ou busque o destino externo.")
+
+    if erros:
+        for e in erros:
+            st.error(e)
     else:
-        cols_show = ["data_hora", "id_frota", "linha", "tipo_viagem", "km_percorrido", "motivo"]
-        if "destino_cidade" in df_v.columns:
-            cols_show.append("destino_cidade")
-        if "retiros" in df_v.columns:
-            cols_show.append("retiros")
-        vis = df_v.head(15).copy()
-        vis["data_hora"] = vis["data_hora"].dt.strftime("%d/%m/%Y %H:%M")
-        st.dataframe(vis[[c for c in cols_show if c in vis.columns]], use_container_width=True, hide_index=True)
-
-# ═══════════════════════════════════════════════════════════════
-# PAINEL
-# ═══════════════════════════════════════════════════════════════
-elif menu == "📊 Painel":
-    st.title("📊 Painel de Viagens")
-    st.caption(f"Período: últimos {dias_filtro} dias · Build {PAINEL_BUILD}")
-
-    if df_v.empty:
-        st.info("Sem viagens no período. Lance a primeira viagem na aba Lançar.")
-        st.stop()
-
-    km_total = float(df_v["km_percorrido"].sum()) if "km_percorrido" in df_v.columns else 0
-    n_int = len(df_v[df_v["tipo_viagem"] == "INTERNA"]) if "tipo_viagem" in df_v.columns else 0
-    n_ext = len(df_v[df_v["tipo_viagem"] == "EXTERNA"]) if "tipo_viagem" in df_v.columns else 0
-    km_leve = float(df_v.loc[df_v["linha"] == "LEVE", "km_percorrido"].sum()) if "linha" in df_v.columns else 0
-    km_pesada = float(df_v.loc[df_v["linha"] == "PESADA", "km_percorrido"].sum()) if "linha" in df_v.columns else 0
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total viagens", len(df_v))
-    m2.metric("KM percorridos", f"{km_total:,.0f}".replace(",", "."))
-    m3.metric("Internas / Externas", f"{n_int} / {n_ext}")
-    m4.metric("KM leve / pesada", f"{km_leve:.0f} / {km_pesada:.0f}")
-
-    tab1, tab2, tab3, tab4 = st.tabs(["Por veículo", "Por motivo", "Linha do tempo", "Detalhado"])
-
-    with tab1:
-        if "id_frota" in df_v.columns:
-            por_frota = (
-                df_v.groupby("id_frota", as_index=False)
-                .agg(viagens=("id", "count") if "id" in df_v.columns else ("km_percorrido", "count"), km=("km_percorrido", "sum"))
-            )
-            fig = px.bar(
-                por_frota.sort_values("km", ascending=True).tail(15),
-                x="km", y="id_frota", orientation="h",
-                title="KM por frota (top 15)",
-                color="km", color_continuous_scale=["#1e2e1c", "#4a9e3f"],
-            )
-            fig.update_layout(**PDARK, showlegend=False)
-            fig.update_xaxes(**dict(gridcolor="#1e2e1c", tickfont=dict(color="#e8edd0")))
-            fig.update_yaxes(**dict(gridcolor="#1e2e1c", tickfont=dict(color="#e8edd0")))
-            st.plotly_chart(fig, use_container_width=True)
-
-    with tab2:
-        if "motivo" in df_v.columns:
-            por_motivo = df_v.groupby("motivo").size().reset_index(name="qtd").sort_values("qtd", ascending=False).head(12)
-            fig2 = px.pie(
-                por_motivo, names="motivo", values="qtd",
-                title="Motivos mais frequentes",
-                color_discrete_sequence=px.colors.sequential.Greens_r,
-            )
-            fig2.update_layout(**PDARK)
-            st.plotly_chart(fig2, use_container_width=True)
-
-    with tab3:
-        if "data_hora" in df_v.columns:
-            df_d = df_v.copy()
-            df_d["dia"] = df_d["data_hora"].dt.date
-            por_dia = df_d.groupby(["dia", "tipo_viagem"], as_index=False)["km_percorrido"].sum()
-            fig3 = px.bar(
-                por_dia, x="dia", y="km_percorrido", color="tipo_viagem",
-                title="KM por dia (interna vs externa)",
-                color_discrete_map={"INTERNA": "#4a9e3f", "EXTERNA": "#5b9bd5"},
-            )
-            fig3.update_layout(**PDARK)
-            st.plotly_chart(fig3, use_container_width=True)
-
-    with tab4:
-        export = df_v.copy()
-        if "data_hora" in export.columns:
-            export["data_hora"] = export["data_hora"].dt.strftime("%d/%m/%Y %H:%M")
-        st.dataframe(export, use_container_width=True, hide_index=True)
-
-# ═══════════════════════════════════════════════════════════════
-# MAPAS
-# ═══════════════════════════════════════════════════════════════
-else:
-    st.title("🗺️ Mapas interativos")
-    if df_v.empty:
-        st.info("Sem viagens para exibir no mapa.")
-        st.stop()
-
-    tab_ext, tab_int = st.tabs(["🌍 Viagens externas (cidade)", "🏡 Viagens internas (retiros)"])
-
-    with tab_ext:
-        df_ext = df_v[df_v["tipo_viagem"] == "EXTERNA"].copy() if "tipo_viagem" in df_v.columns else pd.DataFrame()
-        st.caption(f"{len(df_ext)} viagens externas no período · linhas verdes = base → destino")
-        st_folium(mapa_externo(df_ext), height=480, use_container_width=True)
-        if not df_ext.empty and "destino_cidade" in df_ext.columns:
-            destinos = df_ext.groupby("destino_cidade").agg(
-                viagens=("id", "count") if "id" in df_ext.columns else ("km_percorrido", "count"),
-                km=("km_percorrido", "sum"),
-            ).reset_index().sort_values("viagens", ascending=False)
-            st.dataframe(destinos, use_container_width=True, hide_index=True)
-
-    with tab_int:
-        df_int = df_v[df_v["tipo_viagem"] == "INTERNA"].copy() if "tipo_viagem" in df_v.columns else pd.DataFrame()
-        c_img, c_map = st.columns([1, 1])
-        with c_img:
-            if MAPA_FAZENDA.exists():
-                st.image(str(MAPA_FAZENDA), caption="Planta da fazenda", use_container_width=True)
-            else:
-                st.info("Adicione `assets/mapa_fazenda.png` para ver a planta ao lado do mapa.")
-        with c_map:
-            st.caption(f"{len(df_int)} viagens internas · círculos verdes = retiros cadastrados")
-            st_folium(mapa_interno(retiros_db, df_int), height=400, use_container_width=True)
-
-        if not df_int.empty and "retiros" in df_int.columns:
-            all_ret = []
-            for val in df_int["retiros"].dropna():
-                if isinstance(val, list):
-                    all_ret.extend(val)
-            if all_ret:
-                freq = pd.Series(all_ret).value_counts().reset_index()
-                freq.columns = ["retiro", "visitas"]
-                fig_r = px.bar(freq.head(12), x="visitas", y="retiro", orientation="h", title="Retiros mais visitados")
-                fig_r.update_layout(**PDARK)
-                st.plotly_chart(fig_r, use_container_width=True)
+        registro = {
+            "data_hora": datetime.combine(data_v, hora_v).isoformat(),
+            "id_frota": placa,
+            "linha": next(v["linha"] for v in veiculos if v["placa"] == placa),
+            "km_inicial": float(km_ini),
+            "km_final": float(km_fim),
+            "tipo_viagem": "INTERNA" if eh_interna else "EXTERNA",
+            "motivo": motivo_final,
+            "motorista": motorista.strip().upper() or None,
+            "retiros": locais_sel if eh_interna else None,
+            "destino_nome": destino_nome if not eh_interna else None,
+            "destino_cidade": destino_cidade if not eh_interna else None,
+            "destino_lat": float(destino_lat) if destino_lat else None,
+            "destino_lng": float(destino_lng) if destino_lng else None,
+            "litros_abastecidos": float(litros) if litros > 0 else None,
+            "valor_abastecimento": float(valor_abast) if valor_abast > 0 else None,
+            "valor_pedagio": float(valor_ped) if valor_ped > 0 else None,
+            "valor_manutencao": float(valor_manut) if valor_manut > 0 else None,
+            "valor_motorista": float(valor_mot) if valor_mot > 0 else None,
+            "observacao": obs.strip().upper() or None,
+        }
+        try:
+            supabase.table("viagem_veiculo").insert(registro).execute()
+            st.success(f"✅ Viagem registrada — {placa} · {km_fim - km_ini:.1f} km")
+            st.balloons()
+            st.cache_data.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao salvar: {e}")
+            st.info("Execute sql/02_migrate_viagem_veiculo.sql no Supabase se ainda não rodou.")
 
 st.divider()
-st.caption("SIGCF | Controle de Viagens SV | Controladoria Bataguassu-MS")
+st.markdown('<div class="sec">Últimos lançamentos</div>', unsafe_allow_html=True)
+rows = ultimas_viagens()
+if rows:
+    df = pd.DataFrame(rows)
+    df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce").dt.strftime("%d/%m/%Y %H:%M")
+    df["destino"] = df.apply(
+        lambda r: ", ".join(r["retiros"]) if r.get("retiros") else (r.get("destino_cidade") or "—"),
+        axis=1,
+    )
+    dark_table(df[["data_hora", "id_frota", "tipo_viagem", "km_percorrido", "motivo", "destino"]].rename(columns={
+        "data_hora": "Data/Hora", "id_frota": "Placa", "tipo_viagem": "Tipo",
+        "km_percorrido": "KM", "motivo": "Motivo", "destino": "Destino",
+    }))
+st.caption("SIG Frota de Veículos | Lançamento | Controladoria SV — MS")
