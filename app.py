@@ -30,7 +30,7 @@ except ImportError as exc:
     )
     st.stop()
 
-exigir_acesso("SIG Frota de Veículos", "Lançamento de viagens — SIGCF Santa Virgínia")
+exigir_acesso("SIG VEÍCULOS", "CONTROLE DE VIAGENS— SIGCF SANTA VERGÍNIA")
 aplicar_tema_sigcf()
 
 MOTIVOS = [
