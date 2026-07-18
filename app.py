@@ -107,9 +107,9 @@ def carregar_cidades_cadastradas():
 
 @st.cache_data(ttl=15)
 def ultimas_viagens(limit=10):
-        res = (
-            supabase.table("viagem_veiculo")
-            .select("data_hora, id_frota, tipo_viagem, km_percorrido, motivo, destino_cidade, retiros")
+    res = (
+        supabase.table("viagem_veiculo")
+        .select("data_hora, id_frota, tipo_viagem, km_percorrido, motivo, destino_cidade, retiros")
         .order("data_hora", desc=True)
         .limit(limit)
         .execute()
