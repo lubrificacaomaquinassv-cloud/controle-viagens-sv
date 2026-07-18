@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Controle de Viagens — Veículos Linha Leve e Pesada | SIGCF Santa Vergínia"""
+"""CONTROLE DE VIAGENS — Veículos Linha Leve e Pesada | SIGCF Santa Vergínia"""
 import streamlit as st
 import pandas as pd
 import plotly.express as px
