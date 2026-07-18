@@ -8,10 +8,7 @@ import pandas as pd
 from datetime import date, datetime
 from supabase import create_client
 
-from geografia import buscar_cidades
-from sigcf_auth import aplicar_tema_sigcf, dark_table, exigir_acesso, logo_html
-
-BUILD = "2026-07-18-lancamento-v3"
+BUILD = "2026-07-18-lancamento-v5"
 
 st.set_page_config(
     page_title="SIG Frota — Lançamento",
@@ -19,6 +16,19 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+try:
+    from geografia import buscar_cidades
+    from sigcf_auth import aplicar_tema_sigcf, dark_table, exigir_acesso, logo_html
+except ImportError as exc:
+    st.error(f"Dependência ausente no GitHub: {exc}")
+    st.markdown(
+        "Confira se estes arquivos estão **na raiz** do repositório (mesma pasta do app.py):\n\n"
+        "- `sigcf_auth.py`\n"
+        "- `geografia.py`\n\n"
+        "Depois: **Manage app → Reboot app** no Streamlit Cloud."
+    )
+    st.stop()
 
 exigir_acesso("SIG Frota de Veículos", "Lançamento de viagens — SIGCF Santa Virgínia")
 aplicar_tema_sigcf()
@@ -62,19 +72,6 @@ def carregar_locais_internos():
     return [r["nome"] for r in (res.data or [])]
 
 
-@st.cache_data(ttl=300)
-def carregar_cidades_cadastradas():
-    res = (
-        supabase.table("dim_locais")
-        .select("nome, lat, lng, cidade")
-        .eq("ativo", True)
-        .eq("tipo", "EXTERNO")
-        .order("nome")
-        .execute()
-    )
-    return res.data or []
-
-
 @st.cache_data(ttl=15)
 def ultimas_viagens(limit=10):
     res = (
@@ -89,7 +86,6 @@ def ultimas_viagens(limit=10):
 
 veiculos = carregar_veiculos()
 locais_int = carregar_locais_internos()
-cidades_db = carregar_cidades_cadastradas()
 
 col_logo, col_titulo = st.columns([1.1, 5.9])
 with col_logo:
@@ -114,34 +110,30 @@ destino_nome, destino_cidade = None, None
 
 if not eh_interna:
     st.markdown('<div class="sec">Destino externo</div>', unsafe_allow_html=True)
-    c1, c2 = st.columns([2, 1])
-    with c1:
-        opcoes_cidade = [c["nome"] for c in cidades_db] + ["Buscar outra cidade (OpenStreetMap)..."]
-        cidade_sel = st.selectbox("Cidade cadastrada", opcoes_cidade)
-    with c2:
-        busca_osm = st.text_input("Buscar cidade (OSM)", placeholder="Ex: Sidrolândia")
+    destino_livre = st.text_input(
+        "Destino",
+        placeholder="Ex: Sidrolândia — MS, Campo Grande, fornecedor em Anastácio…",
+        help="Digite livremente — cidade, fornecedor ou local. Não precisa estar cadastrado.",
+    )
+    destino_cidade = destino_livre.strip().upper() if destino_livre else None
+    destino_nome = destino_cidade
 
-    if busca_osm.strip():
-        resultados = buscar_cidades(busca_osm.strip())
-        if resultados:
-            labels = [r["label"] for r in resultados]
-            escolha = st.selectbox("Resultado da busca", labels)
-            if escolha:
-                hit = next(r for r in resultados if r["label"] == escolha)
-                destino_nome = hit["display_name"]
-                destino_cidade = hit["label"]
-                destino_lat, destino_lng = hit["lat"], hit["lng"]
-                st.caption(f"Coordenadas: {destino_lat:.5f}, {destino_lng:.5f}")
-        else:
-            st.warning("Nenhum resultado. Tente outro nome.")
-
-    if cidade_sel != "Buscar outra cidade (OpenStreetMap)..." and not destino_cidade:
-        hit = next((c for c in cidades_db if c["nome"] == cidade_sel), None)
-        if hit:
-            destino_nome = hit["nome"]
-            destino_cidade = hit.get("cidade") or hit["nome"]
-            destino_lat = hit.get("lat")
-            destino_lng = hit.get("lng")
+    with st.expander("Localizar no mapa (opcional — só para gravar GPS)"):
+        busca_osm = st.text_input("Buscar no OpenStreetMap", placeholder="Ex: Sidrolândia")
+        if busca_osm.strip():
+            resultados = buscar_cidades(busca_osm.strip())
+            if resultados:
+                labels = [r["label"] for r in resultados]
+                escolha = st.selectbox("Confirme o local encontrado", labels)
+                if escolha:
+                    hit = next(r for r in resultados if r["label"] == escolha)
+                    destino_lat, destino_lng = hit["lat"], hit["lng"]
+                    destino_nome = hit["display_name"]
+                    if not destino_cidade:
+                        destino_cidade = hit["label"].strip().upper()
+                    st.caption(f"GPS: {destino_lat:.5f}, {destino_lng:.5f}")
+            else:
+                st.warning("Nenhum resultado. O destino digitado acima será salvo mesmo assim.")
 
 st.markdown('<div class="sec">Registrar viagem</div>', unsafe_allow_html=True)
 
@@ -196,8 +188,8 @@ if enviar:
         erros.append("Informe o motivo.")
     if eh_interna and not locais_sel:
         erros.append("Selecione ao menos um local interno.")
-    if not eh_interna and not destino_cidade and not destino_nome:
-        erros.append("Selecione ou busque o destino externo.")
+    if not eh_interna and not destino_cidade:
+        erros.append("Informe o destino.")
 
     if erros:
         for e in erros:
