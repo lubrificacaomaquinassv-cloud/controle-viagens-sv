@@ -35,11 +35,23 @@ aplicar_tema_sigcf()
 
 MOTIVOS = [
     "Buscar material",
-    "Levar colaborador",
+    "Consulta medica",
+    "Viagens da SESTR",
+    "Acidente de trabalho",
     "Buscar peças / insumos",
     "Serviço em fornecedor",
     "Visita técnica",
-    "Emergência / plantão",
+    "Emergência / hospital",
+    "Troca de turno",
+    "Monitoramento",
+    "Controle de pragas",
+    "Deslocamento de colaboradores",
+    "Visita social",
+    "SESTR",
+    "Limpeza de residencia dos retiros",
+    "Borracharia movel",
+    "Mecanica movel",
+    "Manutencao eletrica residencial",
     "Outro",
 ]
 
