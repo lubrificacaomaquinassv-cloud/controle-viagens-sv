@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 SIG Frota de Veículos — APP DE LANÇAMENTO (campo)
-Publicar como app.py no repo: sig-frota-lancamento-sv
+Publicar como app.py no repo: controle-viagens-sv
 """
 import streamlit as st
 import pandas as pd
@@ -9,47 +9,19 @@ from datetime import date, datetime
 from supabase import create_client
 
 from geografia import buscar_cidades
-from sigcf_auth import exigir_acesso, logo_html
+from sigcf_auth import aplicar_tema_sigcf, dark_table, exigir_acesso, logo_html
 
-BUILD = "2026-07-18-lancamento-v2"
+BUILD = "2026-07-18-lancamento-v3"
 
 st.set_page_config(
-    page_title="SIG Frota de Veículos — Lançamento",
+    page_title="SIG Frota — Lançamento",
     page_icon="🚘",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
 exigir_acesso("SIG Frota de Veículos", "Lançamento de viagens — SIGCF Santa Virgínia")
-
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&display=swap');
-[data-testid="stAppViewContainer"]{background:#0a1409;}
-[data-testid="stHeader"]{background:#0a1409;}
-h1,h2,h3,p,span,label{color:#e8edd0;}
-h1{font-family:'Barlow Condensed',sans-serif;letter-spacing:0.5px;}
-.stCaption,[data-testid="stCaptionContainer"] p{color:#8aab80!important;}
-.sec{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;
- letter-spacing:2px;text-transform:uppercase;color:#8aab80;
- border-left:4px solid #4a9e3f;padding-left:10px;margin:8px 0 12px;}
-.logo-frame{background:linear-gradient(145deg,#0a1628,#0d2040);border:2px solid #c9a227;
- border-radius:12px;padding:5px;display:inline-block;box-shadow:0 4px 18px rgba(0,0,0,.45);}
-.logo-frame img{display:block;border-radius:8px;}
-.titulo-frota{font-family:'Barlow Condensed',sans-serif;font-size:2rem;font-weight:700;
- color:#e8edd0;display:flex;align-items:center;gap:10px;}
-.titulo-frota .ico{font-size:2.2rem;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));}
-.stTextInput input,.stNumberInput input,.stTextArea textarea,[data-testid="stDateInput"] input,
-[data-testid="stTimeInput"] input{
- background:#dce6d2!important;color:#1a2818!important;border:1px solid #4a6644!important;border-radius:8px!important;}
-div[data-baseweb="select"] > div{background:#dce6d2!important;border:1px solid #4a6644!important;color:#1a2818!important;border-radius:8px!important;}
-div[data-baseweb="select"] div{color:#1a2818!important;}
-[data-testid="stForm"]{background:#0d180c!important;border:1px solid #1e2e1c!important;border-radius:12px;padding:16px;}
-.stButton button,[data-testid="stFormSubmitButton"] button{
- background:#4a9e3f!important;color:#fff!important;border:1px solid #6fcf60!important;
- font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;border-radius:8px;}
-</style>
-""", unsafe_allow_html=True)
+aplicar_tema_sigcf()
 
 MOTIVOS = [
     "Buscar material",
@@ -61,9 +33,7 @@ MOTIVOS = [
     "Outro",
 ]
 
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
 
 @st.cache_data(ttl=120)
@@ -117,27 +87,6 @@ def ultimas_viagens(limit=10):
     return res.data or []
 
 
-def dark_table(df, height=220):
-    if df.empty:
-        st.info("Nenhum registro.")
-        return
-    rows = "".join(
-        "<tr>" + "".join(
-            f'<td style="padding:6px 10px;border-bottom:1px solid #1e2e1c;color:#e8edd0;font-size:12px;">{v}</td>'
-            for v in row) + "</tr>"
-        for _, row in df.iterrows())
-    headers = "".join(
-        f'<th style="padding:7px 10px;background:#111c10;color:#8aab80;font-size:10px;font-weight:700;'
-        f'text-transform:uppercase;border-bottom:2px solid #1e2e1c;">{c}</th>'
-        for c in df.columns)
-    st.markdown(
-        f'<div style="overflow:auto;max-height:{height}px;border:1px solid #1e2e1c;border-radius:10px;">'
-        f'<table style="width:100%;border-collapse:collapse;background:#0d180c;">'
-        f'<thead><tr>{headers}</tr></thead><tbody>{rows}</tbody></table></div>',
-        unsafe_allow_html=True,
-    )
-
-
 veiculos = carregar_veiculos()
 locais_int = carregar_locais_internos()
 cidades_db = carregar_cidades_cadastradas()
@@ -146,11 +95,8 @@ col_logo, col_titulo = st.columns([1.1, 5.9])
 with col_logo:
     st.markdown(logo_html(118), unsafe_allow_html=True)
 with col_titulo:
-    st.markdown(
-        '<div class="titulo-frota"><span class="ico">🚘</span> SIG Frota de Veículos</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption("SIGCF — Sistema Integrado de Gestão · Lançamento de viagens · Build " + BUILD)
+    st.markdown("## SIG Frota de Veículos")
+    st.caption("Lançamento de viagens · SIGCF Santa Virgínia · Build " + BUILD)
 
 if not veiculos:
     st.error("Cadastre veículos em dim_veiculos (rode sql/01_schema_sig_frota.sql no Supabase).")
@@ -167,10 +113,10 @@ destino_lat, destino_lng = None, None
 destino_nome, destino_cidade = None, None
 
 if not eh_interna:
-    st.markdown('<div class="sec">Destino externo — geografia via OpenStreetMap</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec">Destino externo</div>', unsafe_allow_html=True)
     c1, c2 = st.columns([2, 1])
     with c1:
-        opcoes_cidade = [c["nome"] for c in cidades_db] + ["🔍 Buscar outra cidade (OpenStreetMap)..."]
+        opcoes_cidade = [c["nome"] for c in cidades_db] + ["Buscar outra cidade (OpenStreetMap)..."]
         cidade_sel = st.selectbox("Cidade cadastrada", opcoes_cidade)
     with c2:
         busca_osm = st.text_input("Buscar cidade (OSM)", placeholder="Ex: Sidrolândia")
@@ -179,17 +125,17 @@ if not eh_interna:
         resultados = buscar_cidades(busca_osm.strip())
         if resultados:
             labels = [r["label"] for r in resultados]
-            escolha = st.selectbox("Resultado da busca (geografia atualizada)", labels)
+            escolha = st.selectbox("Resultado da busca", labels)
             if escolha:
                 hit = next(r for r in resultados if r["label"] == escolha)
                 destino_nome = hit["display_name"]
                 destino_cidade = hit["label"]
                 destino_lat, destino_lng = hit["lat"], hit["lng"]
-                st.caption(f"📍 {destino_lat:.5f}, {destino_lng:.5f}")
+                st.caption(f"Coordenadas: {destino_lat:.5f}, {destino_lng:.5f}")
         else:
             st.warning("Nenhum resultado. Tente outro nome.")
 
-    if cidade_sel != "🔍 Buscar outra cidade (OpenStreetMap)..." and not destino_cidade:
+    if cidade_sel != "Buscar outra cidade (OpenStreetMap)..." and not destino_cidade:
         hit = next((c for c in cidades_db if c["nome"] == cidade_sel), None)
         if hit:
             destino_nome = hit["nome"]
@@ -208,8 +154,8 @@ with st.form("form_viagem", clear_on_submit=True):
     with fc3:
         motorista = st.text_input("Motorista / condutor")
 
-    labels_veic = [f"{v['placa']} — {v['descricao']} [{v['linha']}]" for v in veiculos]
-    veic_sel = st.selectbox("Placa (frota rodoviária)", labels_veic)
+    labels_veic = [f"{v['placa']} — {v['descricao']}" for v in veiculos]
+    veic_sel = st.selectbox("Placa", labels_veic)
 
     fc4, fc5 = st.columns(2)
     with fc4:
@@ -224,7 +170,7 @@ with st.form("form_viagem", clear_on_submit=True):
     if eh_interna:
         locais_sel = st.multiselect("Retiros / locais visitados", options=locais_int)
 
-    with st.expander("💰 Custos da viagem (opcional — entra no fechamento gerencial)"):
+    with st.expander("Custos da viagem (opcional — entra no fechamento gerencial)"):
         cc1, cc2 = st.columns(2)
         with cc1:
             litros = st.number_input("Litros abastecidos", min_value=0.0, step=0.01, format="%.2f")
@@ -235,7 +181,7 @@ with st.form("form_viagem", clear_on_submit=True):
             valor_mot = st.number_input("Valor motorista (R$)", min_value=0.0, step=0.01, format="%.2f")
 
     obs = st.text_area("Observação", height=50)
-    enviar = st.form_submit_button("✅ REGISTRAR VIAGEM", use_container_width=True, type="primary")
+    enviar = st.form_submit_button("REGISTRAR VIAGEM", use_container_width=True, type="primary")
 
 if enviar:
     placa = veic_sel.split(" — ")[0].strip().upper()
@@ -280,8 +226,7 @@ if enviar:
         }
         try:
             supabase.table("viagem_veiculo").insert(registro).execute()
-            st.success(f"✅ Viagem registrada — {placa} · {km_fim - km_ini:.1f} km")
-            st.balloons()
+            st.success(f"Viagem registrada — {placa} · {km_fim - km_ini:.1f} km")
             st.cache_data.clear()
             st.rerun()
         except Exception as e:
@@ -298,8 +243,16 @@ if rows:
         lambda r: ", ".join(r["retiros"]) if r.get("retiros") else (r.get("destino_cidade") or "—"),
         axis=1,
     )
-    dark_table(df[["data_hora", "id_frota", "tipo_viagem", "km_percorrido", "motivo", "destino"]].rename(columns={
-        "data_hora": "Data/Hora", "id_frota": "Placa", "tipo_viagem": "Tipo",
-        "km_percorrido": "KM", "motivo": "Motivo", "destino": "Destino",
-    }))
-st.caption("SIG Frota de Veículos | Lançamento | Controladoria SV — MS")
+    dark_table(
+        df[["data_hora", "id_frota", "tipo_viagem", "km_percorrido", "motivo", "destino"]].rename(
+            columns={
+                "data_hora": "Data/Hora",
+                "id_frota": "Placa",
+                "tipo_viagem": "Tipo",
+                "km_percorrido": "KM",
+                "motivo": "Motivo",
+                "destino": "Destino",
+            }
+        )
+    )
+st.caption("SIG Frota de Veículos · Lançamento · Controladoria SV — MS")
