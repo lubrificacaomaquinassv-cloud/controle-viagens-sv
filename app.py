@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import date, datetime
 from supabase import create_client
 
-BUILD = "2026-07-19-lancamento-v8"
+BUILD = "2026-07-19-lancamento-v9"
 
 st.set_page_config(
     page_title="SIG Frota — Lançamento",
@@ -18,22 +18,33 @@ st.set_page_config(
 )
 
 try:
-    from geografia import buscar_cidades
     from sigcf_auth import aplicar_tema_sigcf, dark_table, exigir_acesso, logo_html
 except ImportError as exc:
     st.error(f"Dependência ausente no GitHub: {exc}")
     st.markdown(
-        "Confira se estes arquivos estão **na raiz** do repositório (mesma pasta do app.py):\n\n"
-        "- `sigcf_auth.py`\n"
-        "- `geografia.py`\n\n"
-        "Depois: **Manage app → Reboot app** no Streamlit Cloud."
+        "Confira se **`sigcf_auth.py`** está na raiz do repositório. "
+        "Depois: **Manage app → Reboot app**."
     )
     st.stop()
 
 exigir_acesso("SIG Frota de Veículos", "Lançamento de viagens — SIGCF Santa Virgínia")
 aplicar_tema_sigcf()
 
-MOTIVOS = [
+MOTIVOS_INTERNA = [
+    "Troca de turno",
+    "Campanha IATF",
+    "Monitoramento de praga",
+    "Controle de pragas plantio",
+    "Monitoramento de fogo",
+    "Visita técnica",
+    "TIP",
+    "Mecânica móvel",
+    "Borracharia móvel",
+    "Deslocamento de frente de serviço",
+    "Outro",
+]
+
+MOTIVOS_EXTERNA = [
     "Buscar material",
     "Levar colaborador",
     "Buscar peças / insumos",
@@ -41,6 +52,16 @@ MOTIVOS = [
     "Visita técnica",
     "Emergência / plantão",
     "Outro",
+]
+
+LOCAIS_PADRAO = [
+    "RETIRO POCO AZUL",
+    "RETIRO CORREGO DO CAMPO",
+    "RETIRO AGUA BRANCA",
+    "RETIRO BARRA DO CERVO",
+    "ALDEIA",
+    "IPOMEIA",
+    "PORTARIA",
 ]
 
 supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
@@ -61,15 +82,19 @@ def carregar_veiculos():
 
 @st.cache_data(ttl=300)
 def carregar_locais_internos():
-    res = (
-        supabase.table("dim_locais")
-        .select("nome")
-        .eq("ativo", True)
-        .eq("tipo", "INTERNO")
-        .order("nome")
-        .execute()
-    )
-    return [r["nome"] for r in (res.data or [])]
+    try:
+        res = (
+            supabase.table("dim_locais")
+            .select("nome")
+            .eq("ativo", True)
+            .eq("tipo", "INTERNO")
+            .order("nome")
+            .execute()
+        )
+        db = [r["nome"] for r in (res.data or [])]
+    except Exception:
+        db = []
+    return sorted(set(LOCAIS_PADRAO) | set(db))
 
 
 @st.cache_data(ttl=15)
@@ -84,8 +109,17 @@ def ultimas_viagens(limit=10):
     return res.data or []
 
 
+def montar_motivo(motivo: str, detalhe: str) -> str:
+    det = detalhe.strip().upper()
+    if motivo == "Outro":
+        return det
+    base = motivo.upper()
+    return f"{base} — {det}" if det else base
+
+
 veiculos = carregar_veiculos()
 locais_int = carregar_locais_internos()
+motivos_opcoes = MOTIVOS_INTERNA  # default até o radio renderizar
 
 col_logo, col_titulo = st.columns([1.1, 5.9])
 with col_logo:
@@ -95,7 +129,7 @@ with col_titulo:
     st.caption("Lançamento de viagens · SIGCF Santa Virgínia · Build " + BUILD)
 
 if not veiculos:
-    st.error("Cadastre veículos em dim_veiculos (rode sql/01_schema_sig_frota.sql no Supabase).")
+    st.error("Cadastre veículos em dim_veiculos (rode sql/04_cadastro_frota.sql no Supabase).")
     st.stop()
 
 tipo_viagem = st.radio(
@@ -104,15 +138,16 @@ tipo_viagem = st.radio(
     horizontal=True,
 )
 eh_interna = tipo_viagem.startswith("INTERNA")
+motivos_opcoes = MOTIVOS_INTERNA if eh_interna else MOTIVOS_EXTERNA
 
-destino_lat, destino_lng = None, None
-destino_nome, destino_cidade = None, None
+destino_cidade = None
+destino_nome = None
 
 if not eh_interna:
     st.markdown('<div class="sec">Destino externo</div>', unsafe_allow_html=True)
     destino_livre = st.text_input(
-        "Destino",
-        placeholder="Ex: Sidrolândia, Campo Grande, fornecedor…",
+        "Cidade / destino",
+        placeholder="Digite livremente — ex: Sidrolândia, Campo Grande, fornecedor…",
     )
     destino_cidade = destino_livre.strip().upper() if destino_livre else None
     destino_nome = destino_cidade
@@ -133,12 +168,20 @@ with st.form("form_viagem", clear_on_submit=True):
         if km_calc > 0:
             st.metric("KM percorridos", f"{km_calc:.1f} km")
 
-    motivo = st.selectbox("Motivo", MOTIVOS)
-    motivo_txt = st.text_input("Detalhe (se necessário)", placeholder="Opcional")
+    motivo = st.selectbox("Motivo", motivos_opcoes)
+    if motivo == "Outro":
+        motivo_txt = st.text_input("Descreva o motivo", placeholder="Obrigatório se escolheu Outro")
+    else:
+        motivo_txt = st.text_input("Detalhe (opcional)", placeholder="Opcional")
 
     locais_sel = []
+    local_outro = ""
     if eh_interna:
-        locais_sel = st.multiselect("Retiros / locais visitados", options=locais_int)
+        locais_sel = st.multiselect("Locais visitados", options=locais_int)
+        local_outro = st.text_input(
+            "Outro local (se não estiver na lista)",
+            placeholder="Opcional — digite e registra normalmente",
+        )
 
     com_custos = st.checkbox("Informar custos da viagem (opcional)")
     litros = valor_abast = valor_ped = valor_manut = valor_mot = 0.0
@@ -157,9 +200,11 @@ with st.form("form_viagem", clear_on_submit=True):
 
 if enviar:
     placa = veic_sel.split(" — ")[0].strip().upper()
-    motivo_final = motivo_txt.strip().upper() if motivo == "Outro" else motivo.upper()
-    if motivo_txt.strip() and motivo != "Outro":
-        motivo_final = f"{motivo.upper()} — {motivo_txt.strip().upper()}"
+    motivo_final = montar_motivo(motivo, motivo_txt)
+
+    retiros_final = list(locais_sel)
+    if local_outro.strip():
+        retiros_final.append(local_outro.strip().upper())
 
     agora = datetime.now()
     data_hora_viagem = datetime.combine(data_v, agora.time().replace(second=0, microsecond=0))
@@ -170,11 +215,11 @@ if enviar:
     if km_fim < km_ini:
         erros.append("KM final deve ser ≥ KM inicial.")
     if not motivo_final:
-        erros.append("Informe o motivo.")
-    if eh_interna and not locais_sel:
-        erros.append("Selecione ao menos um local interno.")
+        erros.append("Informe o motivo (ou descreva se escolheu Outro).")
+    if eh_interna and not retiros_final:
+        erros.append("Selecione ao menos um local ou digite em Outro local.")
     if not eh_interna and not destino_cidade:
-        erros.append("Informe o destino.")
+        erros.append("Informe o destino (digite livremente).")
 
     if erros:
         for e in erros:
@@ -189,11 +234,11 @@ if enviar:
             "tipo_viagem": "INTERNA" if eh_interna else "EXTERNA",
             "motivo": motivo_final,
             "motorista": motorista.strip().upper() or None,
-            "retiros": locais_sel if eh_interna else None,
+            "retiros": retiros_final if eh_interna else None,
             "destino_nome": destino_nome if not eh_interna else None,
             "destino_cidade": destino_cidade if not eh_interna else None,
-            "destino_lat": float(destino_lat) if destino_lat else None,
-            "destino_lng": float(destino_lng) if destino_lng else None,
+            "destino_lat": None,
+            "destino_lng": None,
             "litros_abastecidos": float(litros) if litros > 0 else None,
             "valor_abastecimento": float(valor_abast) if valor_abast > 0 else None,
             "valor_pedagio": float(valor_ped) if valor_ped > 0 else None,
