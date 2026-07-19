@@ -31,27 +31,37 @@ exigir_acesso("SIG Frota de Veículos", "Lançamento de viagens — SIGCF Santa 
 aplicar_tema_sigcf()
 
 MOTIVOS_INTERNA = [
-    "Troca de turno",
-    "Campanha IATF",
-    "Monitoramento de praga",
-    "Controle de pragas plantio",
-    "Monitoramento de fogo",
-    "Visita técnica",
+    "TROCA DE TURNO",
+    "CAMPANHA IATF",
+    "MONITORAMENTO DE PRAGA",
+    "CONTROLE DE PRAGA PLANTIO",
+    "MONITORAMENTO DE FOGO",
+    "VISITA TÉCNICA DA FLORESTA",
     "TIP",
-    "Mecânica móvel",
-    "Borracharia móvel",
-    "Deslocamento de frente de serviço",
-    "Outro",
+    "MECÂNICA MÓVEL",
+    "BORRACHARIA MÓVEL",
+    "DESLOCAMENTO DE FRENTE DE SERVCIÇO",
+    "MANEJO DE REBANHO";
+    "VISITA SESTR",
+    "VISITA TÉCNICA PECUÁRIA",
+    "MANUTENCAO ELETRICA RESIDENCIAL",
+    "LIMPEZA DE PÁTIO DE RETIROS",
+    "VISITA SOCIAL",
+    "CUIDADO COM A SAÚDE",
+    "OUTROS",
 ]
 
 MOTIVOS_EXTERNA = [
-    "Buscar material",
-    "Levar colaborador",
-    "Buscar peças / insumos",
-    "Serviço em fornecedor",
-    "Visita técnica",
-    "Emergência / plantão",
-    "Outro",
+    "BUSCAR MATERIAL | INSUMOS",
+    "SERVICOS ADMINISTRATIVOS",
+    "LEVAR COLABORADOR | CONSULTA",
+    "BUSCAR PEÇAS | INSUMOS",
+    "SERVICOS EM FORNECEDOR EXTERNO",
+    "VISITA TÉCNICA",
+    "EXAMES PERÍÓDICO | DEMISSIONAL | ADMINISSIONAL",
+    "EMERGÊNCIA | MÉDICA",
+    "ACOMPANHAMENTO MÉDICO",
+    "OUTROS",
 ]
 
 LOCAIS_PADRAO = [
@@ -59,6 +69,7 @@ LOCAIS_PADRAO = [
     "RETIRO CORREGO DO CAMPO",
     "RETIRO AGUA BRANCA",
     "RETIRO BARRA DO CERVO",
+    "RETIRO TAQUARUSSU",
     "ALDEIA",
     "IPOMEIA",
     "PORTARIA",
