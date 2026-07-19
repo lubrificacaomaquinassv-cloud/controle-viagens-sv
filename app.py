@@ -5,10 +5,10 @@ Publicar como app.py no repo: controle-viagens-sv
 """
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime, time
+from datetime import date, datetime
 from supabase import create_client
 
-BUILD = "2026-07-19-lancamento-v7"
+BUILD = "2026-07-19-lancamento-v8"
 
 st.set_page_config(
     page_title="SIG Frota — Lançamento",
@@ -112,91 +112,47 @@ if not eh_interna:
     st.markdown('<div class="sec">Destino externo</div>', unsafe_allow_html=True)
     destino_livre = st.text_input(
         "Destino",
-        placeholder="Ex: Sidrolândia — MS, Campo Grande, fornecedor em Anastácio…",
-        help="Digite livremente — cidade, fornecedor ou local. Não precisa estar cadastrado.",
+        placeholder="Ex: Sidrolândia, Campo Grande, fornecedor…",
     )
     destino_cidade = destino_livre.strip().upper() if destino_livre else None
     destino_nome = destino_cidade
 
-    with st.expander("Localizar no mapa (opcional — só para gravar GPS)"):
-        busca_osm = st.text_input("Buscar no OpenStreetMap", placeholder="Ex: Sidrolândia")
-        if busca_osm.strip():
-            resultados = buscar_cidades(busca_osm.strip())
-            if resultados:
-                labels = [r["label"] for r in resultados]
-                escolha = st.selectbox("Confirme o local encontrado", labels)
-                if escolha:
-                    hit = next(r for r in resultados if r["label"] == escolha)
-                    destino_lat, destino_lng = hit["lat"], hit["lng"]
-                    destino_nome = hit["display_name"]
-                    if not destino_cidade:
-                        destino_cidade = hit["label"].strip().upper()
-                    st.caption(f"GPS: {destino_lat:.5f}, {destino_lng:.5f}")
-            else:
-                st.warning("Nenhum resultado. O destino digitado acima será salvo mesmo assim.")
-
 st.markdown('<div class="sec">Registrar viagem</div>', unsafe_allow_html=True)
 
-if "viagem_dt_init" not in st.session_state:
-    agora = datetime.now()
-    st.session_state.v_dia = agora.day
-    st.session_state.v_mes = agora.month
-    st.session_state.v_ano = agora.year
-    st.session_state.v_hora = agora.hour
-    st.session_state.v_min = (agora.minute // 5) * 5
-    st.session_state.viagem_dt_init = True
-
-_anos = list(range(2024, date.today().year + 1))
-
 with st.form("form_viagem", clear_on_submit=True):
-    st.caption("Data e hora — selecione nos campos abaixo (compatível com celular)")
-    d1, d2, d3, d4, d5 = st.columns(5)
-    with d1:
-        sel_dia = st.selectbox("Dia", list(range(1, 32)), key="v_dia")
-    with d2:
-        sel_mes = st.selectbox(
-            "Mês", list(range(1, 13)), format_func=lambda m: f"{m:02d}", key="v_mes"
-        )
-    with d3:
-        sel_ano = st.selectbox("Ano", _anos, key="v_ano")
-    with d4:
-        sel_hora = st.selectbox(
-            "Hora", list(range(0, 24)), format_func=lambda h: f"{h:02d}h", key="v_hora"
-        )
-    with d5:
-        sel_min = st.selectbox(
-            "Min", list(range(0, 60, 5)), format_func=lambda m: f"{m:02d}", key="v_min"
-        )
-
-    motorista = st.text_input("Motorista / condutor")
-
-    labels_veic = [f"{v['placa']} — {v['descricao']}" for v in veiculos]
-    veic_sel = st.selectbox("Placa", labels_veic)
-
-    fc4, fc5 = st.columns(2)
-    with fc4:
+    col1, col2 = st.columns(2)
+    with col1:
+        data_v = st.date_input("📅 Data", value=date.today(), format="DD/MM/YYYY")
+        motorista = st.text_input("Motorista / condutor")
+        labels_veic = [f"{v['placa']} — {v['descricao']}" for v in veiculos]
+        veic_sel = st.selectbox("Placa", labels_veic)
+    with col2:
         km_ini = st.number_input("KM inicial", min_value=0.0, step=0.1, format="%.1f")
-    with fc5:
         km_fim = st.number_input("KM final", min_value=0.0, step=0.1, format="%.1f")
+        km_calc = round(km_fim - km_ini, 1)
+        if km_calc > 0:
+            st.metric("KM percorridos", f"{km_calc:.1f} km")
 
     motivo = st.selectbox("Motivo", MOTIVOS)
-    motivo_txt = st.text_area("Detalhe do motivo", height=60, placeholder="Descreva: buscar material, levar colaborador…")
+    motivo_txt = st.text_input("Detalhe (se necessário)", placeholder="Opcional")
 
     locais_sel = []
     if eh_interna:
         locais_sel = st.multiselect("Retiros / locais visitados", options=locais_int)
 
-    st.caption("Custos (opcional — entra no fechamento gerencial)")
-    cc1, cc2 = st.columns(2)
-    with cc1:
-        litros = st.number_input("Litros abastecidos", min_value=0.0, step=0.01, format="%.2f")
-        valor_abast = st.number_input("Valor abastecimento (R$)", min_value=0.0, step=0.01, format="%.2f")
-        valor_ped = st.number_input("Pedágio (R$)", min_value=0.0, step=0.01, format="%.2f")
-    with cc2:
-        valor_manut = st.number_input("Manutenção (R$)", min_value=0.0, step=0.01, format="%.2f")
-        valor_mot = st.number_input("Valor motorista (R$)", min_value=0.0, step=0.01, format="%.2f")
+    com_custos = st.checkbox("Informar custos da viagem (opcional)")
+    litros = valor_abast = valor_ped = valor_manut = valor_mot = 0.0
+    if com_custos:
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            litros = st.number_input("Litros", min_value=0.0, step=0.01, format="%.2f")
+            valor_abast = st.number_input("Abastecimento (R$)", min_value=0.0, step=0.01, format="%.2f")
+            valor_ped = st.number_input("Pedágio (R$)", min_value=0.0, step=0.01, format="%.2f")
+        with cc2:
+            valor_manut = st.number_input("Manutenção (R$)", min_value=0.0, step=0.01, format="%.2f")
+            valor_mot = st.number_input("Motorista (R$)", min_value=0.0, step=0.01, format="%.2f")
 
-    obs = st.text_area("Observação", height=50)
+    obs = st.text_input("Observação", placeholder="Opcional")
     enviar = st.form_submit_button("REGISTRAR VIAGEM", use_container_width=True, type="primary")
 
 if enviar:
@@ -205,15 +161,12 @@ if enviar:
     if motivo_txt.strip() and motivo != "Outro":
         motivo_final = f"{motivo.upper()} — {motivo_txt.strip().upper()}"
 
+    agora = datetime.now()
+    data_hora_viagem = datetime.combine(data_v, agora.time().replace(second=0, microsecond=0))
+
     erros = []
-    try:
-        data_v = date(int(sel_ano), int(sel_mes), int(sel_dia))
-    except ValueError:
-        data_v = None
-        erros.append("Data inválida — confira dia e mês.")
-    if data_v and data_v > date.today():
+    if data_v > date.today():
         erros.append("Data não pode ser no futuro.")
-    hora_v = time(int(sel_hora), int(sel_min))
     if km_fim < km_ini:
         erros.append("KM final deve ser ≥ KM inicial.")
     if not motivo_final:
@@ -226,10 +179,7 @@ if enviar:
     if erros:
         for e in erros:
             st.error(e)
-    elif not data_v:
-        st.error("Informe uma data válida.")
     else:
-        data_hora_viagem = datetime.combine(data_v, hora_v)
         registro = {
             "data_hora": data_hora_viagem.isoformat(),
             "id_frota": placa,
@@ -254,13 +204,12 @@ if enviar:
         try:
             supabase.table("viagem_veiculo").insert(registro).execute()
             st.success(
-                f"Viagem registrada — {placa} · {km_fim - km_ini:.1f} km · "
+                f"Viagem registrada — {placa} · {km_calc:.1f} km · "
                 f"{data_hora_viagem.strftime('%d/%m/%Y %H:%M')}"
             )
             st.cache_data.clear()
         except Exception as e:
             st.error(f"Erro ao salvar: {e}")
-            st.info("Execute sql/02_migrate_viagem_veiculo.sql no Supabase se ainda não rodou.")
 
 st.divider()
 st.markdown('<div class="sec">Últimos lançamentos</div>', unsafe_allow_html=True)
