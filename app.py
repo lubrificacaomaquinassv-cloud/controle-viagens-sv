@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import date, datetime
 from supabase import create_client
 
-BUILD = "2026-07-19-lancamento-v9"
+BUILD = "2026-07-19-lancamento-v10"
 
 st.set_page_config(
     page_title="SIG Frota — Lançamento",
@@ -31,37 +31,27 @@ exigir_acesso("SIG Frota de Veículos", "Lançamento de viagens — SIGCF Santa 
 aplicar_tema_sigcf()
 
 MOTIVOS_INTERNA = [
-    "TROCA DE TURNO",
-    "CAMPANHA IATF",
-    "MONITORAMENTO DE PRAGA",
-    "CONTROLE DE PRAGA PLANTIO",
-    "MONITORAMENTO DE FOGO",
-    "VISITA TÉCNICA DA FLORESTA",
+    "Troca de turno",
+    "Campanha IATF",
+    "Monitoramento de praga",
+    "Controle de pragas plantio",
+    "Monitoramento de fogo",
+    "Visita técnica",
     "TIP",
-    "MECÂNICA MÓVEL",
-    "BORRACHARIA MÓVEL",
-    "DESLOCAMENTO DE FRENTE DE SERVCIÇO",
-    "MANEJO DE REBANHO",
-    "VISITA SESTR",
-    "VISITA TÉCNICA PECUÁRIA",
-    "MANUTENCAO ELETRICA RESIDENCIAL",
-    "LIMPEZA DE PÁTIO DE RETIROS",
-    "VISITA SOCIAL",
-    "CUIDADO COM A SAÚDE",
-    "OUTROS",
+    "Mecânica móvel",
+    "Borracharia móvel",
+    "Deslocamento de frente de serviço",
+    "Outro",
 ]
 
 MOTIVOS_EXTERNA = [
-    "BUSCAR MATERIAL | INSUMOS",
-    "SERVICOS ADMINISTRATIVOS",
-    "LEVAR COLABORADOR | CONSULTA",
-    "BUSCAR PEÇAS | INSUMOS",
-    "SERVICOS EM FORNECEDOR EXTERNO",
-    "VISITA TÉCNICA",
-    "EXAMES PERÍÓDICO | DEMISSIONAL | ADMINISSIONAL",
-    "EMERGÊNCIA | MÉDICA",
-    "ACOMPANHAMENTO MÉDICO",
-    "OUTROS",
+    "Buscar material",
+    "Levar colaborador",
+    "Buscar peças / insumos",
+    "Serviço em fornecedor",
+    "Visita técnica",
+    "Emergência / plantão",
+    "Outro",
 ]
 
 LOCAIS_PADRAO = [
@@ -69,7 +59,6 @@ LOCAIS_PADRAO = [
     "RETIRO CORREGO DO CAMPO",
     "RETIRO AGUA BRANCA",
     "RETIRO BARRA DO CERVO",
-    "RETIRO TAQUARUSSU",
     "ALDEIA",
     "IPOMEIA",
     "PORTARIA",
@@ -169,7 +158,19 @@ with st.form("form_viagem", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
         data_v = st.date_input("📅 Data", value=date.today(), format="DD/MM/YYYY")
-        motorista = st.text_input("Motorista / condutor")
+        if eh_interna:
+            motorista = st.text_input("Motorista / condutor")
+            autorizado_por = ""
+        else:
+            cm1, cm2 = st.columns(2)
+            with cm1:
+                motorista = st.text_input("Motorista / condutor")
+            with cm2:
+                autorizado_por = st.text_input(
+                    "Quem autorizou",
+                    placeholder="Gestor / supervisor",
+                    help="Obrigatório em viagens externas.",
+                )
         labels_veic = [f"{v['placa']} — {v['descricao']}" for v in veiculos]
         veic_sel = st.selectbox("Placa", labels_veic)
     with col2:
@@ -231,6 +232,8 @@ if enviar:
         erros.append("Selecione ao menos um local ou digite em Outro local.")
     if not eh_interna and not destino_cidade:
         erros.append("Informe o destino (digite livremente).")
+    if not eh_interna and not autorizado_por.strip():
+        erros.append("Informe quem autorizou a viagem externa.")
 
     if erros:
         for e in erros:
@@ -245,6 +248,7 @@ if enviar:
             "tipo_viagem": "INTERNA" if eh_interna else "EXTERNA",
             "motivo": motivo_final,
             "motorista": motorista.strip().upper() or None,
+            "autorizado_por": autorizado_por.strip().upper() if not eh_interna else None,
             "retiros": retiros_final if eh_interna else None,
             "destino_nome": destino_nome if not eh_interna else None,
             "destino_cidade": destino_cidade if not eh_interna else None,
@@ -266,6 +270,8 @@ if enviar:
             st.cache_data.clear()
         except Exception as e:
             st.error(f"Erro ao salvar: {e}")
+            if "autorizado_por" in str(e).lower():
+                st.info("Execute sql/08_add_autorizado_por.sql no Supabase.")
 
 st.divider()
 st.markdown('<div class="sec">Últimos lançamentos</div>', unsafe_allow_html=True)
