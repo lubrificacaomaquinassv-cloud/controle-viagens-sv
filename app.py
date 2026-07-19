@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import date, datetime, time
 from supabase import create_client
 
-BUILD = "2026-07-19-lancamento-v6"
+BUILD = "2026-07-19-lancamento-v7"
 
 st.set_page_config(
     page_title="SIG Frota — Lançamento",
@@ -137,26 +137,38 @@ if not eh_interna:
 
 st.markdown('<div class="sec">Registrar viagem</div>', unsafe_allow_html=True)
 
+if "viagem_dt_init" not in st.session_state:
+    agora = datetime.now()
+    st.session_state.v_dia = agora.day
+    st.session_state.v_mes = agora.month
+    st.session_state.v_ano = agora.year
+    st.session_state.v_hora = agora.hour
+    st.session_state.v_min = (agora.minute // 5) * 5
+    st.session_state.viagem_dt_init = True
+
+_anos = list(range(2024, date.today().year + 1))
+
 with st.form("form_viagem", clear_on_submit=True):
-    fc1, fc2, fc3 = st.columns(3)
-    with fc1:
-        data_v = st.date_input(
-            "Data",
-            min_value=date(2024, 1, 1),
-            max_value=date.today(),
-            format="DD/MM/YYYY",
-            key="viagem_data",
-            help="Toque para abrir o calendário e escolher a data.",
+    st.caption("Data e hora — selecione nos campos abaixo (compatível com celular)")
+    d1, d2, d3, d4, d5 = st.columns(5)
+    with d1:
+        sel_dia = st.selectbox("Dia", list(range(1, 32)), key="v_dia")
+    with d2:
+        sel_mes = st.selectbox(
+            "Mês", list(range(1, 13)), format_func=lambda m: f"{m:02d}", key="v_mes"
         )
-    with fc2:
-        hora_v = st.time_input(
-            "Hora",
-            step=900,
-            key="viagem_hora",
-            help="Toque para escolher a hora (não preenche automaticamente).",
+    with d3:
+        sel_ano = st.selectbox("Ano", _anos, key="v_ano")
+    with d4:
+        sel_hora = st.selectbox(
+            "Hora", list(range(0, 24)), format_func=lambda h: f"{h:02d}h", key="v_hora"
         )
-    with fc3:
-        motorista = st.text_input("Motorista / condutor")
+    with d5:
+        sel_min = st.selectbox(
+            "Min", list(range(0, 60, 5)), format_func=lambda m: f"{m:02d}", key="v_min"
+        )
+
+    motorista = st.text_input("Motorista / condutor")
 
     labels_veic = [f"{v['placa']} — {v['descricao']}" for v in veiculos]
     veic_sel = st.selectbox("Placa", labels_veic)
@@ -174,15 +186,15 @@ with st.form("form_viagem", clear_on_submit=True):
     if eh_interna:
         locais_sel = st.multiselect("Retiros / locais visitados", options=locais_int)
 
-    with st.expander("Custos da viagem (opcional — entra no fechamento gerencial)"):
-        cc1, cc2 = st.columns(2)
-        with cc1:
-            litros = st.number_input("Litros abastecidos", min_value=0.0, step=0.01, format="%.2f")
-            valor_abast = st.number_input("Valor abastecimento (R$)", min_value=0.0, step=0.01, format="%.2f")
-            valor_ped = st.number_input("Pedágio (R$)", min_value=0.0, step=0.01, format="%.2f")
-        with cc2:
-            valor_manut = st.number_input("Manutenção (R$)", min_value=0.0, step=0.01, format="%.2f")
-            valor_mot = st.number_input("Valor motorista (R$)", min_value=0.0, step=0.01, format="%.2f")
+    st.caption("Custos (opcional — entra no fechamento gerencial)")
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        litros = st.number_input("Litros abastecidos", min_value=0.0, step=0.01, format="%.2f")
+        valor_abast = st.number_input("Valor abastecimento (R$)", min_value=0.0, step=0.01, format="%.2f")
+        valor_ped = st.number_input("Pedágio (R$)", min_value=0.0, step=0.01, format="%.2f")
+    with cc2:
+        valor_manut = st.number_input("Manutenção (R$)", min_value=0.0, step=0.01, format="%.2f")
+        valor_mot = st.number_input("Valor motorista (R$)", min_value=0.0, step=0.01, format="%.2f")
 
     obs = st.text_area("Observação", height=50)
     enviar = st.form_submit_button("REGISTRAR VIAGEM", use_container_width=True, type="primary")
@@ -194,10 +206,14 @@ if enviar:
         motivo_final = f"{motivo.upper()} — {motivo_txt.strip().upper()}"
 
     erros = []
-    if not data_v:
-        erros.append("Selecione a data da viagem no calendário.")
-    if not hora_v:
-        erros.append("Selecione a hora da viagem.")
+    try:
+        data_v = date(int(sel_ano), int(sel_mes), int(sel_dia))
+    except ValueError:
+        data_v = None
+        erros.append("Data inválida — confira dia e mês.")
+    if data_v and data_v > date.today():
+        erros.append("Data não pode ser no futuro.")
+    hora_v = time(int(sel_hora), int(sel_min))
     if km_fim < km_ini:
         erros.append("KM final deve ser ≥ KM inicial.")
     if not motivo_final:
@@ -210,6 +226,8 @@ if enviar:
     if erros:
         for e in erros:
             st.error(e)
+    elif not data_v:
+        st.error("Informe uma data válida.")
     else:
         data_hora_viagem = datetime.combine(data_v, hora_v)
         registro = {
