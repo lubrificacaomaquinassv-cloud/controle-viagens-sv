@@ -5,10 +5,10 @@ Publicar como app.py no repo: controle-viagens-sv
 """
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime
+from datetime import date, datetime, time
 from supabase import create_client
 
-BUILD = "2026-07-18-lancamento-v5"
+BUILD = "2026-07-19-lancamento-v6"
 
 st.set_page_config(
     page_title="SIG Frota — Lançamento",
@@ -30,28 +30,16 @@ except ImportError as exc:
     )
     st.stop()
 
-exigir_acesso("SIG VEÍCULOS", "CONTROLE DE VIAGENS— SIGCF SANTA VERGÍNIA")
+exigir_acesso("SIG Frota de Veículos", "Lançamento de viagens — SIGCF Santa Virgínia")
 aplicar_tema_sigcf()
 
 MOTIVOS = [
     "Buscar material",
-    "Consulta medica",
-    "Viagens da SESTR",
-    "Acidente de trabalho",
+    "Levar colaborador",
     "Buscar peças / insumos",
     "Serviço em fornecedor",
     "Visita técnica",
-    "Emergência / hospital",
-    "Troca de turno",
-    "Monitoramento",
-    "Controle de pragas",
-    "Deslocamento de colaboradores",
-    "Visita social",
-    "SESTR",
-    "Limpeza de residencia dos retiros",
-    "Borracharia movel",
-    "Mecanica movel",
-    "Manutencao eletrica residencial",
+    "Emergência / plantão",
     "Outro",
 ]
 
@@ -103,7 +91,7 @@ col_logo, col_titulo = st.columns([1.1, 5.9])
 with col_logo:
     st.markdown(logo_html(118), unsafe_allow_html=True)
 with col_titulo:
-    st.markdown("## SIG FROTA DE VEÍCULOS")
+    st.markdown("## SIG Frota de Veículos")
     st.caption("Lançamento de viagens · SIGCF Santa Virgínia · Build " + BUILD)
 
 if not veiculos:
@@ -152,9 +140,21 @@ st.markdown('<div class="sec">Registrar viagem</div>', unsafe_allow_html=True)
 with st.form("form_viagem", clear_on_submit=True):
     fc1, fc2, fc3 = st.columns(3)
     with fc1:
-        data_v = st.date_input("Data", value=date.today())
+        data_v = st.date_input(
+            "Data",
+            min_value=date(2024, 1, 1),
+            max_value=date.today(),
+            format="DD/MM/YYYY",
+            key="viagem_data",
+            help="Toque para abrir o calendário e escolher a data.",
+        )
     with fc2:
-        hora_v = st.time_input("Hora", value=datetime.now().time().replace(second=0, microsecond=0))
+        hora_v = st.time_input(
+            "Hora",
+            step=900,
+            key="viagem_hora",
+            help="Toque para escolher a hora (não preenche automaticamente).",
+        )
     with fc3:
         motorista = st.text_input("Motorista / condutor")
 
@@ -194,6 +194,10 @@ if enviar:
         motivo_final = f"{motivo.upper()} — {motivo_txt.strip().upper()}"
 
     erros = []
+    if not data_v:
+        erros.append("Selecione a data da viagem no calendário.")
+    if not hora_v:
+        erros.append("Selecione a hora da viagem.")
     if km_fim < km_ini:
         erros.append("KM final deve ser ≥ KM inicial.")
     if not motivo_final:
@@ -207,8 +211,9 @@ if enviar:
         for e in erros:
             st.error(e)
     else:
+        data_hora_viagem = datetime.combine(data_v, hora_v)
         registro = {
-            "data_hora": datetime.combine(data_v, hora_v).isoformat(),
+            "data_hora": data_hora_viagem.isoformat(),
             "id_frota": placa,
             "linha": next(v["linha"] for v in veiculos if v["placa"] == placa),
             "km_inicial": float(km_ini),
@@ -230,9 +235,11 @@ if enviar:
         }
         try:
             supabase.table("viagem_veiculo").insert(registro).execute()
-            st.success(f"Viagem registrada — {placa} · {km_fim - km_ini:.1f} km")
+            st.success(
+                f"Viagem registrada — {placa} · {km_fim - km_ini:.1f} km · "
+                f"{data_hora_viagem.strftime('%d/%m/%Y %H:%M')}"
+            )
             st.cache_data.clear()
-            st.rerun()
         except Exception as e:
             st.error(f"Erro ao salvar: {e}")
             st.info("Execute sql/02_migrate_viagem_veiculo.sql no Supabase se ainda não rodou.")
