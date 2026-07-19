@@ -103,7 +103,7 @@ col_logo, col_titulo = st.columns([1.1, 5.9])
 with col_logo:
     st.markdown(logo_html(118), unsafe_allow_html=True)
 with col_titulo:
-    st.markdown("## SIG Frota de Veículos")
+    st.markdown("## SIG FROTA DE VEÍCULOS")
     st.caption("Lançamento de viagens · SIGCF Santa Virgínia · Build " + BUILD)
 
 if not veiculos:
